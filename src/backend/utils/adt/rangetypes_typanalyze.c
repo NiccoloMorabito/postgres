@@ -56,8 +56,6 @@ range_typanalyze(PG_FUNCTION_ARGS)
 	stats->extra_data = typcache;
 	/* same as in std_typanalyze */
 	stats->minrows = 300 * attr->attstattarget;
-	//printf("Trying debugging: %d\n", stats->minrows);
-	//fflush(stdout);
 
 	PG_RETURN_BOOL(true);
 }
@@ -92,6 +90,7 @@ range_bound_qsort_cmp(const void *a1, const void *a2, void *arg)
 	return range_cmp_bounds(typcache, b1, b2);
 }
 
+/*
 //TODO DELETE OR CLEAN-UP
 int length(RangeBound *p) 
 { 
@@ -126,6 +125,7 @@ Datum max_value(RangeBound *uppers)
 	}
 	return value;
 }
+*/
 
 /*
  * compute_range_stats() -- compute statistics for a range column
@@ -146,7 +146,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	int			slot_idx;
 	int			num_bins = stats->attr->attstattarget;
 	int			num_hist;
-	float8	   *lengths;
+	//float8	   *lengths;
 	RangeBound *lowers,
 			   *uppers;
 	double		total_width = 0;
@@ -189,7 +189,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 
 		if (!empty)
 		{
-			/* Remember bounds and length for further usage in histograms */
+			//Remember bounds and length for further usage in histograms
 			lowers[non_empty_cnt] = lower;
 			uppers[non_empty_cnt] = upper;
 
@@ -227,7 +227,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	/* We can only compute real stats if we found some non-null values. */
 	if (non_null_cnt > 0)
 	{
-		int	   	   *histogram;
+		int32	   	   *histogram;
 		Datum	   *length_hist_values;
 		Datum		start_hg,
 					end_hg,
@@ -264,7 +264,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 					  range_bound_qsort_cmp, typcache);
 
 
-			start_hg = lowers[0].val; 					// start = min(lower_bounds)
+			start_hg = lowers[0].val; 						// start = min(lower_bounds)
 			end_hg = uppers[non_empty_cnt-1].val;			// end = max(upper_bounds)
 
 			//?????
@@ -301,7 +301,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			}
 			*/
 			
-			histogram = (int *) palloc(num_hist * sizeof(int));
+			histogram = (int32 *) palloc(num_hist * sizeof(int32));
 			int frequency;
 			Datum bin_start;
 			Datum bin_end;
@@ -320,19 +320,45 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 					lower_bound = lowers[r].val;
 					upper_bound = uppers[r].val;
 					// if overlaps
-					if (lower_bound < bin_end || upper_bound > bin_start)
+					if (lower_bound < bin_end && upper_bound > bin_start)
 					{
 						frequency++;
 					}
 				}
 				printf("%d; ", frequency);
+				
 				histogram[i] = frequency;
 			}
+			printf("\nPrinting histogram\n");
+			for (int z=0; z<num_hist; z++) {
+				printf("%d; ", histogram[z]);
+			}
+			printf("\n\n");
 
-			stats->stakind[slot_idx] = STATISTIC_KIND_BOUNDS_HISTOGRAM; //TODO
+			// new attempt
+			stats->staop[slot_idx] = Int4LessOperator;
+			stats->stacoll[slot_idx] = InvalidOid;
 			stats->stavalues[slot_idx] = histogram;
 			stats->numvalues[slot_idx] = num_hist;
+			stats->statypid[slot_idx] = INT4OID;
+			stats->statyplen[slot_idx] = sizeof(int64);
+			stats->statypbyval[slot_idx] = true;
+			stats->statypalign[slot_idx] = 'd';
+
+			//Store the fraction of empty ranges //TODO check if this is important
+			emptyfrac = (float4 *) palloc(sizeof(float4));
+			*emptyfrac = ((double) empty_cnt) / ((double) non_null_cnt);
+			stats->stanumbers[slot_idx] = emptyfrac;
+			stats->numnumbers[slot_idx] = 1;
+			
+			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM;
 			slot_idx++;
+
+			// previous solution (non va bene perché è bound histogram)
+			//stats->stakind[slot_idx] = STATISTIC_KIND_BOUNDS_HISTOGRAM; //TODO
+			//stats->stavalues[slot_idx] = histogram;
+			// stats->numvalues[slot_idx] = num_hist;
+			//slot_idx++;
 			printf("End of part that I edited\n");
 			fflush(stdout);
 		}

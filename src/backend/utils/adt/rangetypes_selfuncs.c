@@ -373,6 +373,7 @@ static double
 calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 					  const RangeType *constval, Oid operator)
 {
+	AttStatsSlot myhisto;
 	AttStatsSlot hslot;
 	AttStatsSlot lslot;
 	int			nhist;
@@ -384,6 +385,9 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	bool		empty;
 	double		hist_selec;
 
+	printf("Calculating hist selectivity...\n");
+	fflush(stdout);
+
 	/* Can't use the histogram with insecure range support functions */
 	if (!statistic_proc_security_check(vardata,
 									   typcache->rng_cmp_proc_finfo.fn_oid))
@@ -393,7 +397,23 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 									   typcache->rng_subdiff_finfo.fn_oid))
 		return -1;
 
-	/* Try to get histogram of ranges */
+	// SNIPPET TO RETRIEVE HISTOGRAM FROM typanalyze
+	printf("My attempt\n");
+	fflush(stdout);
+	get_attstatsslot(&myhisto, vardata->statsTuple,
+						   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM, InvalidOid,
+						   ATTSTATSSLOT_VALUES);
+	printf("My attempt finished, %d, %d, %d\n", myhisto.values[0], myhisto.values[1], myhisto.values[2]);
+	fflush(stdout);
+	printf("%d\n", myhisto.nvalues);
+	for (int z=0; z<myhisto.nvalues; z++) {
+		printf("%d; ", myhisto.values[z]);
+	}
+	fflush(stdout);	
+
+	// FROM HERE IT DOESN'T WORK CURRENTLY
+
+	//Try to get histogram of ranges
 	if (!(HeapTupleIsValid(vardata->statsTuple) &&
 		  get_attstatsslot(&hslot, vardata->statsTuple,
 						   STATISTIC_KIND_BOUNDS_HISTOGRAM, InvalidOid,
