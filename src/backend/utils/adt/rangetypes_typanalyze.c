@@ -362,39 +362,6 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			stats->stavalues[slot_idx] = histogramBounds;
 			stats->numvalues[slot_idx] = 1;
 
-
-
-
-
-			/*
-			Datum	   *two_values = (Datum *) palloc(2 * sizeof(Datum));
-			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_HG_STATS;
-			two_values[0] = end_hg; // this is the problem
-			two_values[1] = bound_hist_values[1]; // this is not (what is the difference since they are both Datum?)
-			stats->stavalues[slot_idx] = two_values;
-			stats->numvalues[slot_idx] = 2;
-			slot_idx++;
-			*/
-
-			/*
-			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_HG_STATS;
-			RangeBound start;
-			start.val = start_hg;
-			RangeBound width;
-			width.val = bin_width;
-			stats->stavalues[slot_idx] = (RangeBound *){start, width};
-			stats->numvalues[slot_idx] = 2; //TODO segmentation fault 11
-
-			stats->statypid[slot_idx] = typcache->type_id;
-			stats->statyplen[slot_idx] = typcache->typlen;
-			stats->statypbyval[slot_idx] = typcache->typbyval;
-			stats->statypalign[slot_idx] = typcache->typalign;
-			slot_idx++;
-			*/
-			
-
-
-
 			printf("End of part that I edited\n");
 			fflush(stdout);
 		}
