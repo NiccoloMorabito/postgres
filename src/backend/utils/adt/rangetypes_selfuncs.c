@@ -119,6 +119,9 @@ rangesel(PG_FUNCTION_ARGS)
 	TypeCacheEntry *typcache = NULL;
 	RangeType  *constrange = NULL;
 
+	printf("Starting rangesel function...\n");
+	fflush(stdout);
+
 	/*
 	 * If expression is not (variable op something) or (something op
 	 * variable), then punt and return a default estimate.
@@ -263,6 +266,8 @@ calc_rangesel(TypeCacheEntry *typcache, VariableStatData *vardata,
 			/* No empty fraction statistic. Assume no empty ranges. */
 			empty_frac = 0.0;
 		}
+		//TODO delete this print
+		printf("nnumbers -> %d and empty_frac -> %f\n", sslot.nnumbers, empty_frac);
 	}
 	else
 	{
@@ -373,13 +378,16 @@ static double
 calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 					  const RangeType *constval, Oid operator)
 {
-	AttStatsSlot myhisto;
+	AttStatsSlot histogram;
+	AttStatsSlot start_end_hist;
+	int			nhist;
+	/*
 	AttStatsSlot hslot;
 	AttStatsSlot lslot;
-	int			nhist;
 	RangeBound *hist_lower;
 	RangeBound *hist_upper;
 	int			i;
+	*/
 	RangeBound	const_lower;
 	RangeBound	const_upper;
 	bool		empty;
@@ -398,21 +406,32 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 		return -1;
 
 	// SNIPPET TO RETRIEVE HISTOGRAM FROM typanalyze
-	printf("My attempt\n");
-	fflush(stdout);
-	get_attstatsslot(&myhisto, vardata->statsTuple,
+	get_attstatsslot(&histogram, vardata->statsTuple,
 						   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
-	printf("My attempt finished, %d, %d, %d\n", myhisto.values[0], myhisto.values[1], myhisto.values[2]);
-	fflush(stdout);
-	printf("%d\n", myhisto.nvalues);
-	for (int z=0; z<myhisto.nvalues; z++) {
-		printf("%d; ", myhisto.values[z]);
+	nhist = histogram.nvalues;
+	printf("Number of values: %d\n", nhist);
+	for (int z=0; z<nhist; z++) {
+		printf("%d; ", histogram.values[z]);
 	}
-	fflush(stdout);	
+	fflush(stdout);
 
-	// FROM HERE IT DOESN'T WORK CURRENTLY
+	// SNIPPET TO RETRIEVE hg_start AND bin_width FROM typanalyze
+	printf("\n\n");
+	get_attstatsslot(&start_end_hist, vardata->statsTuple,
+						   STATISTIC_KIND_RANGE_HG_STATS, InvalidOid,
+						   ATTSTATSSLOT_VALUES);
+	RangeBound start, end;
+	range_deserialize(typcache, DatumGetRangeTypeP(start_end_hist.values[0]),
+						  &start, &end, &empty);
+	Datum start_hg = start.val;
+	Datum end_hg = end.val;
+	Datum bin_width = (end_hg - start_hg) / nhist;
+	printf("New stats: start=%d, end=%d, bin_width=%d\n",
+		DatumGetInt32(start_hg), DatumGetInt32(end_hg), DatumGetInt32(bin_width));
+	fflush(stdout);
 
+	/*
 	//Try to get histogram of ranges
 	if (!(HeapTupleIsValid(vardata->statsTuple) &&
 		  get_attstatsslot(&hslot, vardata->statsTuple,
@@ -420,17 +439,14 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 						   ATTSTATSSLOT_VALUES)))
 		return -1.0;
 
-	/* check that it's a histogram, not just a dummy entry */
+	//check that it's a histogram, not just a dummy entry
 	if (hslot.nvalues < 2)
 	{
 		free_attstatsslot(&hslot);
 		return -1.0;
 	}
 
-	/*
-	 * Convert histogram of ranges into histograms of its lower and upper
-	 * bounds.
-	 */
+	//Convert histogram of ranges into histograms of its lower and upper bounds
 	nhist = hslot.nvalues;
 	hist_lower = (RangeBound *) palloc(sizeof(RangeBound) * nhist);
 	hist_upper = (RangeBound *) palloc(sizeof(RangeBound) * nhist);
@@ -438,12 +454,12 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	{
 		range_deserialize(typcache, DatumGetRangeTypeP(hslot.values[i]),
 						  &hist_lower[i], &hist_upper[i], &empty);
-		/* The histogram should not contain any empty ranges */
+		// The histogram should not contain any empty ranges
 		if (empty)
 			elog(ERROR, "bounds histogram contains an empty range");
 	}
 
-	/* @> and @< also need a histogram of range lengths */
+	// @> and @< also need a histogram of range lengths
 	if (operator == OID_RANGE_CONTAINS_OP ||
 		operator == OID_RANGE_CONTAINED_OP)
 	{
@@ -457,7 +473,7 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 			return -1.0;
 		}
 
-		/* check that it's a histogram, not just a dummy entry */
+		// check that it's a histogram, not just a dummy entry
 		if (lslot.nvalues < 2)
 		{
 			free_attstatsslot(&lslot);
@@ -467,8 +483,8 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	}
 	else
 		memset(&lslot, 0, sizeof(lslot));
-
-	/* Extract the bounds of the constant value. */
+	*/
+	// Extract the bounds of the constant value.
 	range_deserialize(typcache, constval, &const_lower, &const_upper, &empty);
 	Assert(!empty);
 
@@ -478,16 +494,18 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	 */
 	switch (operator)
 	{
+		/*
+		* The regular b-tree comparison operators (<, <=, >, >=) compare
+		* the lower bounds first, and the upper bounds for values with
+		* equal lower bounds. Estimate that by comparing the lower bounds
+		* only. This gives a fairly accurate estimate assuming there
+		* aren't many rows with a lower bound equal to the constant's
+		* lower bound.
+		*/
+		/*
 		case OID_RANGE_LESS_OP:
 
-			/*
-			 * The regular b-tree comparison operators (<, <=, >, >=) compare
-			 * the lower bounds first, and the upper bounds for values with
-			 * equal lower bounds. Estimate that by comparing the lower bounds
-			 * only. This gives a fairly accurate estimate assuming there
-			 * aren't many rows with a lower bound equal to the constant's
-			 * lower bound.
-			 */
+			
 			hist_selec =
 				calc_hist_selectivity_scalar(typcache, &const_lower,
 											 hist_lower, nhist, false);
@@ -511,34 +529,37 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 												 hist_lower, nhist, true);
 			break;
 
+		*/
+	
 		case OID_RANGE_LEFT_OP:
-			/* var << const when upper(var) < lower(const) */
-			hist_selec =
-				calc_hist_selectivity_scalar(typcache, &const_lower,
-											 hist_upper, nhist, false);
+			// var << const when upper(var) < lower(const)
+			
+			hist_selec = 0; //TODO IMPLEMENT HERE !!!!!!!!!!!!!!!!
+				// calc_hist_selectivity_scalar(typcache, &const_lower, hist_upper, nhist, false);
 			break;
 
+		/*
 		case OID_RANGE_RIGHT_OP:
-			/* var >> const when lower(var) > upper(const) */
+			// var >> const when lower(var) > upper(const)
 			hist_selec =
 				1 - calc_hist_selectivity_scalar(typcache, &const_upper,
 												 hist_lower, nhist, true);
 			break;
 
 		case OID_RANGE_OVERLAPS_RIGHT_OP:
-			/* compare lower bounds */
+			// compare lower bounds
 			hist_selec =
 				1 - calc_hist_selectivity_scalar(typcache, &const_lower,
 												 hist_lower, nhist, false);
 			break;
 
 		case OID_RANGE_OVERLAPS_LEFT_OP:
-			/* compare upper bounds */
+			// compare upper bounds
 			hist_selec =
 				calc_hist_selectivity_scalar(typcache, &const_upper,
 											 hist_upper, nhist, true);
 			break;
-
+		*/
 		case OID_RANGE_OVERLAP_OP:
 		case OID_RANGE_CONTAINS_ELEM_OP:
 
@@ -553,15 +574,14 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 			 * caller already constructed the singular range from the element
 			 * constant, so just treat it the same as &&.
 			 */
-			hist_selec =
-				calc_hist_selectivity_scalar(typcache, &const_lower, hist_upper,
-											 nhist, false);
-			hist_selec +=
-				(1.0 - calc_hist_selectivity_scalar(typcache, &const_upper, hist_lower,
-													nhist, true));
+			hist_selec = 0; //TODO IMPLEMENT HERE !!!!!!!!!!!!!!!!
+				// calc_hist_selectivity_scalar(typcache, &const_lower, hist_upper, nhist, false);
+			hist_selec += 0; //TODO IMPLEMENT HERE !!!!!!!!!!!!!!!!
+				// (1.0 - calc_hist_selectivity_scalar(typcache, &const_upper, hist_lower, nhist, true));
 			hist_selec = 1.0 - hist_selec;
 			break;
 
+		/*
 		case OID_RANGE_CONTAINS_OP:
 			hist_selec =
 				calc_hist_selectivity_contains(typcache, &const_lower,
@@ -572,10 +592,8 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 		case OID_RANGE_CONTAINED_OP:
 			if (const_lower.infinite)
 			{
-				/*
-				 * Lower bound no longer matters. Just estimate the fraction
-				 * with an upper bound <= const upper bound
-				 */
+				// Lower bound no longer matters. Just estimate the fraction
+				// with an upper bound <= const upper bound
 				hist_selec =
 					calc_hist_selectivity_scalar(typcache, &const_upper,
 												 hist_upper, nhist, true);
@@ -594,15 +612,15 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 													lslot.values, lslot.nvalues);
 			}
 			break;
-
+		*/
 		default:
 			elog(ERROR, "unknown range operator %u", operator);
 			hist_selec = -1.0;	/* keep compiler quiet */
 			break;
 	}
 
-	free_attstatsslot(&lslot);
-	free_attstatsslot(&hslot);
+	free_attstatsslot(&histogram);
+	free_attstatsslot(&start_end_hist);
 
 	return hist_selec;
 }

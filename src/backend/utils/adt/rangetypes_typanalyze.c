@@ -229,8 +229,9 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 	{
 		int32	   	   *histogram;
 		Datum	   *length_hist_values;
-		Datum		start_hg,
-					end_hg,
+		RangeBound	min_bound, max_bound;
+		Datum		start_hist,
+					end_hist,
 					bin_width; //TODO check type of this variable (is it possible to make a difference of timestamps?)
 		int			pos,
 					posfrac,
@@ -263,18 +264,19 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			qsort_arg(uppers, non_empty_cnt, sizeof(RangeBound),
 					  range_bound_qsort_cmp, typcache);
 
-
-			start_hg = lowers[0].val; 						// start = min(lower_bounds)
-			end_hg = uppers[non_empty_cnt-1].val;			// end = max(upper_bounds)
+			min_bound = lowers[0];
+			max_bound = uppers[non_empty_cnt-1];
+			start_hist = min_bound.val; 						// start = min(lower_bounds)
+			end_hist = max_bound.val;							// end = max(upper_bounds)
 
 			//?????
 			num_hist = non_empty_cnt;
 			if (num_hist > num_bins)
 				num_hist = num_bins + 1;
 
-			bin_width = (end_hg - start_hg) / num_hist;
-			printf("start_hg: %d\n", DatumGetInt32(start_hg));
-			printf("end_hg: %d\n", DatumGetInt32(end_hg));
+			bin_width = (end_hist - start_hist) / num_hist; //TODO NEED TO USE SUBDIFF
+			printf("start_hg: %d\n", DatumGetInt32(start_hist));
+			printf("end_hg: %d\n", DatumGetInt32(end_hist));
 			printf("bin_width: %d\n", DatumGetInt32(bin_width));
 			fflush(stdout);
 
@@ -307,11 +309,10 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			Datum bin_end;
 			Datum lower_bound;
 			Datum upper_bound;
-			//TODO check that num_hist is the number of bins
 			printf("Printing frequencies...\n");
 			for (i = 0; i < num_hist; i++)
 			{
-				bin_start = start_hg + bin_width*i;
+				bin_start = start_hist + bin_width*i;
 				bin_end = bin_start + bin_width;
 				frequency = 0;
 				
@@ -335,7 +336,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			}
 			printf("\n\n");
 
-			// new attempt
+			// FREQUENCY HISTOGRAM
 			stats->staop[slot_idx] = Int4LessOperator;
 			stats->stacoll[slot_idx] = InvalidOid;
 			stats->stavalues[slot_idx] = histogram;
@@ -350,15 +351,50 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			*emptyfrac = ((double) empty_cnt) / ((double) non_null_cnt);
 			stats->stanumbers[slot_idx] = emptyfrac;
 			stats->numnumbers[slot_idx] = 1;
-			
+
 			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM;
 			slot_idx++;
 
-			// previous solution (non va bene perché è bound histogram)
-			//stats->stakind[slot_idx] = STATISTIC_KIND_BOUNDS_HISTOGRAM; //TODO
-			//stats->stavalues[slot_idx] = histogram;
-			// stats->numvalues[slot_idx] = num_hist;
-			//slot_idx++;
+			// HISTOGRAM FOR START AND END OF FREQUENCY HISTOGRAM
+			Datum * histogramBounds = (Datum *) palloc(sizeof(Datum));
+			histogramBounds[0] = PointerGetDatum(range_serialize(typcache, &min_bound, &max_bound, false));
+			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_HG_STATS;
+			stats->stavalues[slot_idx] = histogramBounds;
+			stats->numvalues[slot_idx] = 1;
+
+
+
+
+
+			/*
+			Datum	   *two_values = (Datum *) palloc(2 * sizeof(Datum));
+			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_HG_STATS;
+			two_values[0] = end_hg; // this is the problem
+			two_values[1] = bound_hist_values[1]; // this is not (what is the difference since they are both Datum?)
+			stats->stavalues[slot_idx] = two_values;
+			stats->numvalues[slot_idx] = 2;
+			slot_idx++;
+			*/
+
+			/*
+			stats->stakind[slot_idx] = STATISTIC_KIND_RANGE_HG_STATS;
+			RangeBound start;
+			start.val = start_hg;
+			RangeBound width;
+			width.val = bin_width;
+			stats->stavalues[slot_idx] = (RangeBound *){start, width};
+			stats->numvalues[slot_idx] = 2; //TODO segmentation fault 11
+
+			stats->statypid[slot_idx] = typcache->type_id;
+			stats->statyplen[slot_idx] = typcache->typlen;
+			stats->statypbyval[slot_idx] = typcache->typbyval;
+			stats->statypalign[slot_idx] = typcache->typalign;
+			slot_idx++;
+			*/
+			
+
+
+
 			printf("End of part that I edited\n");
 			fflush(stdout);
 		}
