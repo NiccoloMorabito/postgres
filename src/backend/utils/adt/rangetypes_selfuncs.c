@@ -49,6 +49,9 @@ static float8 get_distance(TypeCacheEntry *typcache, const RangeBound *bound1,
 						   const RangeBound *bound2);
 static int	length_hist_bsearch(Datum *length_hist_values,
 								int length_hist_nvalues, double value, bool equal);
+static double calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start,
+												Datum bin_width, const Datum constbound,
+												int total_freqs, int nbins);
 static double calc_length_hist_frac(Datum *length_hist_values,
 									int length_hist_nvalues, double length1, double length2, bool equal);
 static double calc_hist_selectivity_contained(TypeCacheEntry *typcache,
@@ -380,7 +383,12 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 {
 	AttStatsSlot histogram;
 	AttStatsSlot start_end_hist;
-	int			nhist;
+	int			nhist; //TODO change to nbins
+	RangeBound 	start, end;
+	Datum 		start_hg, //TODO change names
+				end_hg,
+				bin_width;
+
 	/*
 	AttStatsSlot hslot;
 	AttStatsSlot lslot;
@@ -392,6 +400,7 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	RangeBound	const_upper;
 	bool		empty;
 	double		hist_selec;
+	int			total_freqs = 0;
 
 	printf("Calculating hist selectivity...\n");
 	fflush(stdout);
@@ -410,9 +419,11 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 						   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	nhist = histogram.nvalues;
+	//TODO think about collecting total frequencies and average frequency as another stastic in typanalyze
 	printf("Number of values: %d\n", nhist);
 	for (int z=0; z<nhist; z++) {
 		printf("%d; ", histogram.values[z]);
+		total_freqs += histogram.values[z];
 	}
 	fflush(stdout);
 
@@ -421,12 +432,11 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	get_attstatsslot(&start_end_hist, vardata->statsTuple,
 						   STATISTIC_KIND_RANGE_HG_STATS, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
-	RangeBound start, end;
 	range_deserialize(typcache, DatumGetRangeTypeP(start_end_hist.values[0]),
 						  &start, &end, &empty);
-	Datum start_hg = start.val;
-	Datum end_hg = end.val;
-	Datum bin_width = (end_hg - start_hg) / nhist;
+	start_hg = start.val;
+	end_hg = end.val;
+	bin_width = (end_hg - start_hg) / nhist;
 	printf("New stats: start=%d, end=%d, bin_width=%d\n",
 		DatumGetInt32(start_hg), DatumGetInt32(end_hg), DatumGetInt32(bin_width));
 	fflush(stdout);
@@ -533,19 +543,18 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	
 		case OID_RANGE_LEFT_OP:
 			// var << const when upper(var) < lower(const)
-			
+			hist_selec = calc_frequency_hist_selectivity(histogram.values, start_hg, bin_width, 
+				const_lower.val, total_freqs, nhist);
+			//hist_selec = calc_hist_selectivity_scalar(typcache, &const_lower, hist_upper, nhist, false);
+			break;
+
+		case OID_RANGE_RIGHT_OP:
+			// var >> const when lower(var) > upper(const)
 			hist_selec = 0; //TODO IMPLEMENT HERE !!!!!!!!!!!!!!!!
-				// calc_hist_selectivity_scalar(typcache, &const_lower, hist_upper, nhist, false);
+			//hist_selec = 1 - calc_hist_selectivity_scalar(typcache, &const_upper, hist_lower, nhist, true);
 			break;
 
 		/*
-		case OID_RANGE_RIGHT_OP:
-			// var >> const when lower(var) > upper(const)
-			hist_selec =
-				1 - calc_hist_selectivity_scalar(typcache, &const_upper,
-												 hist_lower, nhist, true);
-			break;
-
 		case OID_RANGE_OVERLAPS_RIGHT_OP:
 			// compare lower bounds
 			hist_selec =
@@ -623,6 +632,30 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	free_attstatsslot(&start_end_hist);
 
 	return hist_selec;
+}
+
+static double
+calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum bin_width,
+	const Datum constbound, int total_freqs, int nbins) {
+	// CURRENTLY COMPUTING STRICTLY LEFT OPERATOR SELECTIVITY (<<)
+	//TODO constbound could be upper or lower bound of constant?
+	Selectivity selec;
+	int index = 0;
+	int count = 0;
+	double avg_freq = total_freqs / nbins;
+
+	printf("start: %d, bin_width: %d, const upperbound: %d\n", DatumGetInt32(hist_start),
+		DatumGetInt32(bin_width), DatumGetInt32(constbound));
+	while (hist_start + bin_width*(index+1) < constbound && index<nbins) {
+		count+=histogram[index++];
+	}
+	// normalizing the estimation of rows and obtain the percentage
+	//TODO add interpolation????
+	selec = count / avg_freq / total_freqs;
+	printf("Selectivity value: %f\n", selec);
+	fflush(stdout);
+
+	return selec;
 }
 
 
