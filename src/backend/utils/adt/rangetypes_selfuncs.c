@@ -49,9 +49,12 @@ static float8 get_distance(TypeCacheEntry *typcache, const RangeBound *bound1,
 						   const RangeBound *bound2);
 static int	length_hist_bsearch(Datum *length_hist_values,
 								int length_hist_nvalues, double value, bool equal);
-static double calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start,
+static double calc_frequency_hist_selectivity_left(const Datum *histogram, Datum hist_start,
 												Datum bin_width, const Datum constbound,
 												int total_freqs, int nbins);
+static double calc_frequency_hist_selectivity_right(const Datum *histogram, Datum hist_start,
+													Datum bin_width, const Datum constbound,
+													int total_freqs, int nbins);
 static double calc_length_hist_frac(Datum *length_hist_values,
 									int length_hist_nvalues, double length1, double length2, bool equal);
 static double calc_hist_selectivity_contained(TypeCacheEntry *typcache,
@@ -543,14 +546,15 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	
 		case OID_RANGE_LEFT_OP:
 			// var << const when upper(var) < lower(const)
-			hist_selec = calc_frequency_hist_selectivity(histogram.values, start_hg, bin_width, 
+			hist_selec = calc_frequency_hist_selectivity_left(histogram.values, start_hg, bin_width, 
 				const_lower.val, total_freqs, nhist);
 			//hist_selec = calc_hist_selectivity_scalar(typcache, &const_lower, hist_upper, nhist, false);
 			break;
 
 		case OID_RANGE_RIGHT_OP:
 			// var >> const when lower(var) > upper(const)
-			hist_selec = 0; //TODO IMPLEMENT HERE !!!!!!!!!!!!!!!!
+			hist_selec = calc_frequency_hist_selectivity_right(histogram.values, start_hg, bin_width,
+				const_upper.val, total_freqs, nhist);
 			//hist_selec = 1 - calc_hist_selectivity_scalar(typcache, &const_upper, hist_lower, nhist, true);
 			break;
 
@@ -635,7 +639,7 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 }
 
 static double
-calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum bin_width,
+calc_frequency_hist_selectivity_left(const Datum *histogram, Datum hist_start, Datum bin_width,
 	const Datum constbound, int total_freqs, int nbins) {
 	// CURRENTLY COMPUTING STRICTLY LEFT OPERATOR SELECTIVITY (<<)
 	//TODO constbound could be upper or lower bound of constant?
@@ -657,6 +661,32 @@ calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum 
 
 	return selec;
 }
+
+static double
+calc_frequency_hist_selectivity_right(const Datum *histogram, Datum hist_start, Datum bin_width,
+	const Datum constbound, int total_freqs, int nbins) {
+	// CURRENTLY COMPUTING STRICTLY RIGHT OPERATOR SELECTIVITY (>>)
+	//TODO constbound could be upper or lower bound of constant?
+	Selectivity selec;
+	int index = 0;
+	int count = 0;
+	double avg_freq = total_freqs / nbins;
+
+	printf("start: %d, bin_width: %d, const upperbound: %d\n", DatumGetInt32(hist_start),
+		DatumGetInt32(bin_width), DatumGetInt32(constbound));
+	while (hist_start + bin_width*(nbins-index) > constbound && index<nbins) {
+		count+=histogram[nbins-index-1];
+		index++;
+	}
+	// normalizing the estimation of rows and obtain the percentage
+	//TODO add interpolation????
+	selec = count / avg_freq / total_freqs;
+	printf("Selectivity value: %f\n", selec);
+	fflush(stdout);
+
+	return selec;
+}
+
 
 
 /*
