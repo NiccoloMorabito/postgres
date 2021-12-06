@@ -122,7 +122,6 @@ rangesel(PG_FUNCTION_ARGS)
 	TypeCacheEntry *typcache = NULL;
 	RangeType  *constrange = NULL;
 
-	printf("Starting rangesel function...\n");
 	fflush(stdout);
 
 	/*
@@ -255,7 +254,7 @@ calc_rangesel(TypeCacheEntry *typcache, VariableStatData *vardata,
 
 		/* Try to get fraction of empty ranges */
 		if (get_attstatsslot(&sslot, vardata->statsTuple,
-							 STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM,
+							 STATISTIC_RANGE_FREQUENCY_HISTOGRAM,
 							 InvalidOid,
 							 ATTSTATSSLOT_NUMBERS))
 		{
@@ -269,8 +268,6 @@ calc_rangesel(TypeCacheEntry *typcache, VariableStatData *vardata,
 			/* No empty fraction statistic. Assume no empty ranges. */
 			empty_frac = 0.0;
 		}
-		//TODO delete this print
-		printf("nnumbers -> %d and empty_frac -> %f\n", sslot.nnumbers, empty_frac);
 	}
 	else
 	{
@@ -416,10 +413,10 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 
 	// SNIPPET TO RETRIEVE HISTOGRAM FROM typanalyze
 	get_attstatsslot(&histogram, vardata->statsTuple,
-						   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM, InvalidOid, //TODO add a new stastic name?
+						   STATISTIC_RANGE_FREQUENCY_HISTOGRAM, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	nbins = histogram.nvalues;
-	//TODO think about collecting total frequencies and average frequency as another stastic in typanalyze
+	//TODO think about collecting total frequencies as another stastic in typanalyze
 	printf("Number of values: %d\n", nbins);
 	for (int z=0; z<nbins; z++) {
 		printf("%d; ", histogram.values[z]);
@@ -430,7 +427,7 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	// SNIPPET TO RETRIEVE hg_start AND bin_width FROM typanalyze
 	printf("\n\n");
 	get_attstatsslot(&histogram_bounds, vardata->statsTuple,
-						   STATISTIC_KIND_RANGE_HG_STATS, InvalidOid, //TODO change name to STATISTIC_KIND_RANGE_HISTOGRAM_BOUNDS
+						   STATISTIC_RANGE_FREQUENCY_HISTOGRAM_BOUNDS, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	range_deserialize(typcache, DatumGetRangeTypeP(histogram_bounds.values[0]),
 						  &start, &end, &empty);
@@ -441,59 +438,6 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 		DatumGetInt32(hist_start), DatumGetInt32(hist_end), DatumGetInt32(bin_width));
 	fflush(stdout);
 
-	/*
-	//Try to get histogram of ranges
-	if (!(HeapTupleIsValid(vardata->statsTuple) &&
-		  get_attstatsslot(&hslot, vardata->statsTuple,
-						   STATISTIC_KIND_BOUNDS_HISTOGRAM, InvalidOid,
-						   ATTSTATSSLOT_VALUES)))
-		return -1.0;
-
-	//check that it's a histogram, not just a dummy entry
-	if (hslot.nvalues < 2)
-	{
-		free_attstatsslot(&hslot);
-		return -1.0;
-	}
-
-	//Convert histogram of ranges into histograms of its lower and upper bounds
-	nbins = hslot.nvalues;
-	hist_lower = (RangeBound *) palloc(sizeof(RangeBound) * nbins);
-	hist_upper = (RangeBound *) palloc(sizeof(RangeBound) * nbins);
-	for (i = 0; i < nbins; i++)
-	{
-		range_deserialize(typcache, DatumGetRangeTypeP(hslot.values[i]),
-						  &hist_lower[i], &hist_upper[i], &empty);
-		// The histogram should not contain any empty ranges
-		if (empty)
-			elog(ERROR, "bounds histogram contains an empty range");
-	}
-
-	// @> and @< also need a histogram of range lengths
-	if (operator == OID_RANGE_CONTAINS_OP ||
-		operator == OID_RANGE_CONTAINED_OP)
-	{
-		if (!(HeapTupleIsValid(vardata->statsTuple) &&
-			  get_attstatsslot(&lslot, vardata->statsTuple,
-							   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM,
-							   InvalidOid,
-							   ATTSTATSSLOT_VALUES)))
-		{
-			free_attstatsslot(&hslot);
-			return -1.0;
-		}
-
-		// check that it's a histogram, not just a dummy entry
-		if (lslot.nvalues < 2)
-		{
-			free_attstatsslot(&lslot);
-			free_attstatsslot(&hslot);
-			return -1.0;
-		}
-	}
-	else
-		memset(&lslot, 0, sizeof(lslot));
-	*/
 	// Extract the bounds of the constant value.
 	range_deserialize(typcache, constval, &const_lower, &const_upper, &empty);
 	Assert(!empty);
@@ -512,34 +456,21 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 		* aren't many rows with a lower bound equal to the constant's
 		* lower bound.
 		*/
-		/*
 		case OID_RANGE_LESS_OP:
-
-			
-			hist_selec =
-				calc_hist_selectivity_scalar(typcache, &const_lower,
-											 hist_lower, nbins, false);
+			hist_selec = 0; // not implemented
 			break;
 
 		case OID_RANGE_LESS_EQUAL_OP:
-			hist_selec =
-				calc_hist_selectivity_scalar(typcache, &const_lower,
-											 hist_lower, nbins, true);
+			hist_selec = 0; // not implemented
 			break;
 
 		case OID_RANGE_GREATER_OP:
-			hist_selec =
-				1 - calc_hist_selectivity_scalar(typcache, &const_lower,
-												 hist_lower, nbins, false);
+			hist_selec = 0; // not implemented
 			break;
 
 		case OID_RANGE_GREATER_EQUAL_OP:
-			hist_selec =
-				1 - calc_hist_selectivity_scalar(typcache, &const_lower,
-												 hist_lower, nbins, true);
+			hist_selec = 0; // not implemented
 			break;
-
-		*/
 	
 		case OID_RANGE_LEFT_OP:
 			// var << const when upper(var) < lower(const)
@@ -553,21 +484,16 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 				const_upper.val, total_freqs, nbins, false);
 			break;
 
-		/*
 		case OID_RANGE_OVERLAPS_RIGHT_OP:
 			// compare lower bounds
-			hist_selec =
-				1 - calc_hist_selectivity_scalar(typcache, &const_lower,
-												 hist_lower, nbins, false);
+			hist_selec = 0; // not implemented
 			break;
 
 		case OID_RANGE_OVERLAPS_LEFT_OP:
 			// compare upper bounds
-			hist_selec =
-				calc_hist_selectivity_scalar(typcache, &const_upper,
-											 hist_upper, nbins, true);
+			hist_selec = 0; // not implemented
 			break;
-		*/
+			
 		case OID_RANGE_OVERLAP_OP:
 		case OID_RANGE_CONTAINS_ELEM_OP:
 
@@ -589,38 +515,13 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 			hist_selec = 1.0 - hist_selec;
 			break;
 
-		/*
 		case OID_RANGE_CONTAINS_OP:
-			hist_selec =
-				calc_hist_selectivity_contains(typcache, &const_lower,
-											   &const_upper, hist_lower, nbins,
-											   lslot.values, lslot.nvalues);
+			hist_selec = 0; // not implemented
 			break;
 
 		case OID_RANGE_CONTAINED_OP:
-			if (const_lower.infinite)
-			{
-				// Lower bound no longer matters. Just estimate the fraction
-				// with an upper bound <= const upper bound
-				hist_selec =
-					calc_hist_selectivity_scalar(typcache, &const_upper,
-												 hist_upper, nbins, true);
-			}
-			else if (const_upper.infinite)
-			{
-				hist_selec =
-					1.0 - calc_hist_selectivity_scalar(typcache, &const_lower,
-													   hist_lower, nbins, false);
-			}
-			else
-			{
-				hist_selec =
-					calc_hist_selectivity_contained(typcache, &const_lower,
-													&const_upper, hist_lower, nbins,
-													lslot.values, lslot.nvalues);
-			}
-			break;
-		*/
+			hist_selec = 0; // not implemented
+			
 		default:
 			elog(ERROR, "unknown range operator %u", operator);
 			hist_selec = -1.0;	/* keep compiler quiet */
@@ -639,24 +540,25 @@ calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum 
 	Selectivity selec;
 	int index = 0;
 	int count = 0;
-	double avg_freq = total_freqs / nbins;
+	double const_value = DatumGetInt32(constbound); //TODO this doesn't work with double values (cast necessary for negative values)
 
-	printf("start: %d, bin_width: %d, const upperbound: %d\n", DatumGetInt32(hist_start),
-		DatumGetInt32(bin_width), DatumGetInt32(constbound));
+	printf("start: %d, bin_width: %d, const bound: %f\n", DatumGetInt32(hist_start),
+		DatumGetInt32(bin_width), const_value);
 	if (leftstrict) {
 		while (hist_start + bin_width*(index+1) < constbound && index<nbins) {
 			count+=histogram[index++];
 		}
 	} else {
-		while (hist_start + bin_width*(nbins-index) > constbound && index<nbins) {
-			count+=histogram[nbins-index-1]; //TODO merge these two lines with count+=histogram[nbins-(index++)-1];
+		while (hist_start + bin_width*(nbins-index) > const_value && index<nbins) {
+			count += histogram[nbins-index-1]; //TODO merge these two lines with count+=histogram[nbins-(index++)-1];
 			index++;
 		}
 	}
 	
 	// normalizing the estimation of rows and obtain the percentage
 	//TODO add interpolation????
-	selec = count / avg_freq / total_freqs;
+	printf("count: %d, total_freqs: %d\n", count, total_freqs);
+	selec = count / (double)total_freqs; //TODO see if the formula should be count/(total_freqs/nbins)total_freqs
 	printf("Selectivity value: %f\n", selec);
 	fflush(stdout);
 

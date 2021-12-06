@@ -89,7 +89,6 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
 				bin_width1, bin_width2;
 	int			total_freqs1 = 0;
     int			total_freqs2 = 0;
-    double      avg_freq1, avg_freq2;
 
     Oid         opfuncoid;
     AttStatsSlot sslot1, sslot2;
@@ -125,40 +124,37 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
 
 
     //TODO cleanup this code, maybe creating functions (maybe in common with selfuncs since the code is the same)
+	//TODO think about collecting total frequencies as another stastic in typanalyze
     // SNIPPET TO RETRIEVE HISTOGRAM FROM typanalyze
     // first relation
 	get_attstatsslot(&histogram1, vardata1.statsTuple,
-						   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM, InvalidOid,
+						   STATISTIC_RANGE_FREQUENCY_HISTOGRAM, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	nbins1 = histogram1.nvalues;
-	//TODO think about collecting total frequencies and average frequency as another stastic in typanalyze
 	printf("FIRST HISTOGRAM (%d values)\n", nbins1);
 	for (int z=0; z<nbins1; z++) {
 		printf("%d; ", histogram1.values[z]);
 		total_freqs1 += histogram1.values[z];
 	}
 	fflush(stdout);
-    avg_freq1 = total_freqs1 / nbins1;
 
     // second relation
     get_attstatsslot(&histogram2, vardata2.statsTuple,
-						   STATISTIC_KIND_RANGE_LENGTH_HISTOGRAM, InvalidOid, //TODO add a new stastic name?
+						   STATISTIC_RANGE_FREQUENCY_HISTOGRAM, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	nbins2 = histogram2.nvalues;
-	//TODO think about collecting total frequencies and average frequency as another stastic in typanalyze
 	printf("\nSECOND HISTOGRAM (%d values)\n", nbins2);
 	for (int z=0; z<nbins2; z++) {
 		printf("%d; ", histogram2.values[z]);
 		total_freqs2 += histogram2.values[z];
 	}
 	fflush(stdout);
-    avg_freq2 = total_freqs2 / nbins2;
 
 	// SNIPPET TO RETRIEVE hg_start AND bin_width FROM typanalyze
     // first relation
 	printf("\n\n");
 	get_attstatsslot(&histogram_bounds1, vardata1.statsTuple,
-						   STATISTIC_KIND_RANGE_HG_STATS, InvalidOid, //TODO change name to STATISTIC_KIND_RANGE_HISTOGRAM_BOUNDS
+						   STATISTIC_RANGE_FREQUENCY_HISTOGRAM_BOUNDS, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	range_deserialize(typcache, DatumGetRangeTypeP(histogram_bounds1.values[0]),
 						  &start1, &end1, &empty);
@@ -170,7 +166,7 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
 	fflush(stdout);
     // second relation
 	get_attstatsslot(&histogram_bounds2, vardata2.statsTuple,
-						   STATISTIC_KIND_RANGE_HG_STATS, InvalidOid, //TODO change name to STATISTIC_KIND_RANGE_HISTOGRAM_BOUNDS
+						   STATISTIC_RANGE_FREQUENCY_HISTOGRAM_BOUNDS, InvalidOid,
 						   ATTSTATSSLOT_VALUES);
 	range_deserialize(typcache, DatumGetRangeTypeP(histogram_bounds2.values[0]),
 						  &start2, &end2, &empty);
@@ -227,7 +223,8 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
     // Normalizing the counter and getting the percentage
     // ("The number of rows that the join is likely to emit is calculated as the cardinality
     // of the Cartesian product of the two inputs multiplied by the selectivity")
-    float8 selectivity = (count / avg_freq1 / avg_freq2) / (total_freqs1*total_freqs2); //TODO check if this formula is correct
+    printf("count: %d, total_freq1: %d, total_freq2 %d\n", count, total_freqs1, total_freqs2);
+    float8 selectivity = count / (double)(total_freqs1*total_freqs2); //TODO check if this formula is correct
     printf("Selectivity: %f\n", selectivity);
     
     free_attstatsslot(&histogram1);
