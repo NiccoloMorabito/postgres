@@ -82,7 +82,7 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
     VariableStatData vardata2;
 	AttStatsSlot histogram1, histogram2;
 	AttStatsSlot histogram_bounds1, histogram_bounds2;
-	int			nbins1, nbins2; //TODO see if they have to be the same number
+	int			nbins1, nbins2; //TODO check if they have to be the same number
 	RangeBound 	start1, end1, start2, end2;
 	Datum 		hist_start1, hist_start2,
 				hist_end1, hist_end2,

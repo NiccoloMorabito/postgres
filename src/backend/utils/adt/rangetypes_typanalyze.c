@@ -257,7 +257,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			stats->statypbyval[slot_idx] = true;
 			stats->statypalign[slot_idx] = 'd';
 
-			//Store the fraction of empty ranges //TODO check if this is needed
+			//Store the fraction of empty ranges //TODO check if these values are needed
 			emptyfrac = (float4 *) palloc(sizeof(float4));
 			*emptyfrac = ((double) empty_cnt) / ((double) non_null_cnt);
 			stats->stanumbers[slot_idx] = emptyfrac;

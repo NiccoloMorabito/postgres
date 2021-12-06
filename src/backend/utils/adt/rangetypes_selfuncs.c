@@ -550,7 +550,7 @@ calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum 
 		}
 	} else {
 		while (hist_start + bin_width*(nbins-index) > const_value && index<nbins) {
-			count += histogram[nbins-index-1]; //TODO merge these two lines with count+=histogram[nbins-(index++)-1];
+			count += histogram[nbins-index-1];
 			index++;
 		}
 	}
@@ -558,7 +558,7 @@ calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum 
 	// normalizing the estimation of rows and obtain the percentage
 	//TODO add interpolation????
 	printf("count: %d, total_freqs: %d\n", count, total_freqs);
-	selec = count / (double)total_freqs; //TODO see if the formula should be count/(total_freqs/nbins)total_freqs
+	selec = count / (double)total_freqs; //TODO check the formula
 	printf("Selectivity value: %f\n", selec);
 	fflush(stdout);
 
