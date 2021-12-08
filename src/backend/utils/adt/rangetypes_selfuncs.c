@@ -433,7 +433,7 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 						  &start, &end, &empty);
 	hist_start = start.val;
 	hist_end = end.val;
-	bin_width = (hist_end - hist_start) / nbins;
+	bin_width = (hist_end - hist_start) / nbins; //TODO this rounds down the result, losing a lot of values potentially
 	printf("New stats: start=%d, end=%d, bin_width=%d\n",
 		DatumGetInt32(hist_start), DatumGetInt32(hist_end), DatumGetInt32(bin_width));
 	fflush(stdout);
@@ -550,6 +550,7 @@ calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum 
 		}
 	} else {
 		while (hist_start + bin_width*(nbins-index) > const_value && index<nbins) {
+			printf("\tindex: %d, upper_bound: %d\n", index, DatumGetInt32(hist_start + bin_width*(nbins-index)));
 			count += histogram[nbins-index-1];
 			index++;
 		}

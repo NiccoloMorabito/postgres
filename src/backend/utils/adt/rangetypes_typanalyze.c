@@ -214,6 +214,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 				num_hist = num_bins + 1;
 
 			bin_width = (end_hist - start_hist) / num_hist; //TODO NEED TO USE SUBDIFF
+			//TODO this rounds down the result, ^^^^^^losing a lot of values potentially
 			printf("start_hg: %d\n", DatumGetInt32(start_hist));
 			printf("end_hg: %d\n", DatumGetInt32(end_hist));
 			printf("bin_width: %d\n", DatumGetInt32(bin_width));
