@@ -545,7 +545,7 @@ calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum 
 	printf("start: %d, bin_width: %d, const bound: %f\n", DatumGetInt32(hist_start),
 		DatumGetInt32(bin_width), const_value);
 	if (leftstrict) {
-		while (hist_start + bin_width*(index+1) < constbound && index<nbins) {
+		while (hist_start + bin_width*(index+1) < const_value && index<nbins) {
 			count+=histogram[index++];
 		}
 	} else {
