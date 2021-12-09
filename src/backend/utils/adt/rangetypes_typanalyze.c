@@ -221,7 +221,6 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			fflush(stdout);
 			
 			histogram = (int32 *) palloc(num_hist * sizeof(int32));
-			printf("Printing frequencies...\n");
 			for (i = 0; i < num_hist; i++)
 			{
 				bin_start = start_hist + bin_width*i;
@@ -233,12 +232,11 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 					lower_bound = lowers[r].val;
 					upper_bound = uppers[r].val;
 					// if overlaps
-					if (lower_bound < bin_end && upper_bound > bin_start)
+					if (lower_bound <= bin_end && bin_start >= upper_bound)
 					{
 						frequency++;
 					}
 				}
-				printf("%d; ", frequency);
 				
 				histogram[i] = frequency;
 			}
