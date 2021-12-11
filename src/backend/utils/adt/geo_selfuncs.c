@@ -178,7 +178,7 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
 	fflush(stdout);
 
 
-    int count=0;
+    long count=0;
     int i1 = 0;
     int i2 = 0;
     Datum bin_start1, bin_end1, bin_start2, bin_end2;
@@ -223,8 +223,8 @@ rangeoverlapsjoinsel(PG_FUNCTION_ARGS)
     // Normalizing the counter and getting the percentage
     // ("The number of rows that the join is likely to emit is calculated as the cardinality
     // of the Cartesian product of the two inputs multiplied by the selectivity")
-    printf("count: %d, total_freq1: %d, total_freq2 %d\n", count, total_freqs1, total_freqs2);
-    float8 selectivity = count / (double)(total_freqs1*total_freqs2); //TODO check if this formula is correct
+    printf("count: %ld, total_freq1: %d, total_freq2 %d\n", count, total_freqs1, total_freqs2);
+    float8 selectivity = count / ((double)total_freqs1*total_freqs2); //TODO check if this formula is correct
     printf("Selectivity: %f\n", selectivity);
     
     free_attstatsslot(&histogram1);

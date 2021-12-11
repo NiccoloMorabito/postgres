@@ -229,6 +229,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 				
 				for (int r=0; r<non_empty_cnt; r++)
 				{
+					//TODO this could lead to some weird behaviour (low.and upp. are sorted separately)
 					lower_bound = lowers[r].val;
 					upper_bound = uppers[r].val;
 					// if overlaps
@@ -266,11 +267,11 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			slot_idx++;
 
 			// HISTOGRAM FOR START AND END OF FREQUENCY HISTOGRAM
-			Datum * histogramBounds = (Datum *) palloc(sizeof(Datum));
-			histogramBounds[0] = PointerGetDatum(
+			Datum * histogram_bounds = (Datum *) palloc(sizeof(Datum));
+			histogram_bounds[0] = PointerGetDatum(
 				range_serialize(typcache, &min_bound, &max_bound, false));
 			stats->stakind[slot_idx] = STATISTIC_RANGE_FREQUENCY_HISTOGRAM_BOUNDS;
-			stats->stavalues[slot_idx] = histogramBounds;
+			stats->stavalues[slot_idx] = histogram_bounds;
 			stats->numvalues[slot_idx] = 1;
 		}
 

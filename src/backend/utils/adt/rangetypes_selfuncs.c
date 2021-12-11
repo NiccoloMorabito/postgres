@@ -49,7 +49,7 @@ static float8 get_distance(TypeCacheEntry *typcache, const RangeBound *bound1,
 						   const RangeBound *bound2);
 static int	length_hist_bsearch(Datum *length_hist_values,
 								int length_hist_nvalues, double value, bool equal);
-static double calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum bin_width,
+static double calc_frequency_hist_selectivity(const Datum *histogram, int hist_start, int bin_width,
 												const Datum constbound, int total_freqs, int nbins,
 												bool leftstrict);
 static double calc_length_hist_frac(Datum *length_hist_values,
@@ -382,7 +382,7 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 	AttStatsSlot histogram_bounds;
 	int			nbins;
 	RangeBound 	start, end;
-	Datum 		hist_start,
+	int32 		hist_start,
 				hist_end,
 				bin_width;
 
@@ -431,11 +431,10 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 						   ATTSTATSSLOT_VALUES);
 	range_deserialize(typcache, DatumGetRangeTypeP(histogram_bounds.values[0]),
 						  &start, &end, &empty);
-	hist_start = start.val;
-	hist_end = end.val;
-	bin_width = (hist_end - hist_start) / nbins; //TODO this rounds down the result, losing a lot of values potentially
-	printf("New stats: start=%d, end=%d, bin_width=%d\n",
-		DatumGetInt32(hist_start), DatumGetInt32(hist_end), DatumGetInt32(bin_width));
+	hist_start = DatumGetInt32(start.val);
+	hist_end = DatumGetInt32(end.val);
+	bin_width = DatumGetInt32((hist_end - hist_start) / nbins); //TODO this rounds down the result, losing a lot of values potentially
+	printf("New stats: start=%d, end=%d, bin_width=%d\n", hist_start, hist_end, bin_width);
 	fflush(stdout);
 
 	// Extract the bounds of the constant value.
@@ -535,22 +534,24 @@ calc_hist_selectivity(TypeCacheEntry *typcache, VariableStatData *vardata,
 }
 
 static double
-calc_frequency_hist_selectivity(const Datum *histogram, Datum hist_start, Datum bin_width,
+calc_frequency_hist_selectivity(const Datum *histogram, int32 hist_start, int32 bin_width,
 	const Datum constbound, int total_freqs, int nbins, bool leftstrict) {
 	Selectivity selec;
 	int index = 0;
 	int count = 0;
-	double const_value = DatumGetInt32(constbound); //TODO this doesn't work with double values (cast necessary for negative values)
+	int32 const_value = DatumGetInt32(constbound);
 
-	printf("start: %d, bin_width: %d, const bound: %f\n", DatumGetInt32(hist_start),
-		DatumGetInt32(bin_width), const_value);
+	printf("start: %d, bin_width: %d, const bound: %d\n", hist_start, bin_width, const_value);
 	if (leftstrict) {
+		printf("\tindex: %d, lower_bound: %d\n", index, hist_start + bin_width*(index+1));
 		while (hist_start + bin_width*(index+1) < const_value && index<nbins) {
+			printf("\tindex: %d, lower_bound: %d\n", index, hist_start + bin_width*(index+1));
 			count+=histogram[index++];
 		}
 	} else {
+		printf("\tnbins-index: %d, upper_bound: %d\n", nbins-index, hist_start + bin_width*(nbins-index));
 		while (hist_start + bin_width*(nbins-index) > const_value && index<nbins) {
-			printf("\tindex: %d, upper_bound: %d\n", index, DatumGetInt32(hist_start + bin_width*(nbins-index)));
+			printf("\tnbins-index: %d, upper_bound: %d\n", nbins-index, hist_start + bin_width*(nbins-index));
 			count += histogram[nbins-index-1];
 			index++;
 		}
